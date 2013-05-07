@@ -17,12 +17,19 @@ sub ticker {
 	my($self, $sign) = @_;
 	my $lwp = $self->_lwp;
 	my $resp = $lwp->get("https://btc-e.com/api/2/$sign/ticker");
-	my $txt = $resp->content;
-	my $jref = decode_json($txt);
+	my $jref = decode_json($resp->content);
 	if(ref($jref) eq 'HASH' && exists($jref->{ticker})) {
 		return $jref->{ticker};
 	}
 	return undef;
+}
+
+sub trades {
+	my($self, $sign) = @_;
+	my $lwp = $self->_lwp;
+	my $resp = $lwp->get("https://btc-e.com/api/2/$sign/trades");
+	my $jref = decode_json($resp->content);
+	return (ref($jref) eq 'ARRAY' ? $jref : undef);
 }
 
 ##############################################
