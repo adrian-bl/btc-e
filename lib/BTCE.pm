@@ -3,6 +3,7 @@ package BTCE;
 use strict;
 use Data::Dumper;
 use LWP::UserAgent;
+use Digest::SHA qw( hmac_sha512_hex);
 use JSON qw(decode_json);
 
 ##############################################
@@ -23,8 +24,7 @@ sub new {
 
 sub ticker {
 	my($self, $sign) = @_;
-	my $lwp = LWP::UserAgent->new(ssl_opts => { verify_hostname => 1});
-	$lwp->agent('Mozilla/4.76 [en] (Win98; U)');
+	my $lwp = $self->_lwp;
 	my $resp = $lwp->get("https://btc-e.com/api/2/$sign/ticker");
 	my $txt = $resp->content;
 	my $jref = decode_json($txt);
@@ -34,9 +34,38 @@ sub ticker {
 	return undef;
 }
 
+sub order_list {
+	my($self) = @_;
+	my $resp = $self->_authpost($self->_lwp, 'getInfo');
+	my $jref = decode_json($resp->content);
+	if(ref($jref) eq 'HASH' && exists($jref->{return})) {
+		return $jref->{return};
+	}
+	return undef;
+}
 
+##############################################
+# Returns a new, ssl enabled and UA faked LWP obj
+sub _lwp {
+	my $lwp = LWP::UserAgent->new(ssl_opts => { verify_hostname => 1});
+	$lwp->agent('Mozilla/4.76 [en] (Win98; U)');
+	return $lwp;
+}
 
-
+##############################################
+# Sends 'method' to TAPI using the given
+# LWP object
+sub _authpost {
+	my($self, $lwp, $method) = @_;
+	
+	my $nonce = time;
+	my $data  = "method=$method&nonce=$nonce";
+	my $hash  = hmac_sha512_hex($data, $self->{secret});
+	$lwp->default_header(Key=>$self->{key});
+	$lwp->default_header(Sign=>$hash);
+	my $resp = $lwp->post("https://btc-e.com/tapi", [method=>$method,, nonce=>$nonce]);
+	return $resp;
+}
 
 ##############################################
 # (Re-?)read config file in user home directory
