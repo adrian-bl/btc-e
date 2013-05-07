@@ -7,6 +7,59 @@ use Time::HiRes qw(gettimeofday);
 use Digest::SHA qw( hmac_sha512_hex);
 use JSON qw(decode_json);
 
+##
+## API CALLS
+##
+
+##############################################
+# Returns ticker info for given currency bundle
+sub ticker {
+	my($self, $sign) = @_;
+	my $lwp = $self->_lwp;
+	my $resp = $lwp->get("https://btc-e.com/api/2/$sign/ticker");
+	my $txt = $resp->content;
+	my $jref = decode_json($txt);
+	if(ref($jref) eq 'HASH' && exists($jref->{ticker})) {
+		return $jref->{ticker};
+	}
+	return undef;
+}
+
+##############################################
+# Returns the current order list
+sub order_list {
+	my($self, %args) = @_;
+	return $self->_raw_rpc('OrderList', %args);
+}
+
+##############################################
+# Returns your own transaction history
+sub trans_history {
+	my($self, %args) = @_;
+	return $self->_raw_rpc('TransHistory', %args);
+}
+
+##############################################
+# Returns your transaction (=executed trades)
+# history
+sub trade_history {
+	my($self, %args) = @_;
+	return $self->_raw_rpc('TradeHistory', %args);
+}
+
+##############################################
+# Returns info for this account
+# (funds, permissions, etc)
+sub get_info {
+	my($self) = @_;
+	return $self->_raw_rpc('getInfo');
+}
+
+
+##
+## STUFF
+##
+
 ##############################################
 # returns a new BTCE object
 sub new {
@@ -22,28 +75,47 @@ sub new {
 	return $self;
 }
 
-
-sub ticker {
-	my($self, $sign) = @_;
-	my $lwp = $self->_lwp;
-	my $resp = $lwp->get("https://btc-e.com/api/2/$sign/ticker");
-	my $txt = $resp->content;
-	my $jref = decode_json($txt);
-	if(ref($jref) eq 'HASH' && exists($jref->{ticker})) {
-		return $jref->{ticker};
-	}
-	return undef;
-}
-
-sub order_list {
+##############################################
+# (Re-?)read config file in user home directory
+sub read_config {
 	my($self) = @_;
-	return $self->_raw_rpc('getInfo');
+	$self->debug("Attempting to get secret from config file");
+	
+	open(CF, "<", "$ENV{HOME}/.btce.secret") or return undef;
+	my $key = <CF>;
+	my $sec = <CF>;
+	close(CF);
+	
+	if(defined($sec)) {
+		chomp($key);
+		chomp($sec);
+		$self->{key} = $key;
+		$self->{secret} = $sec;
+		$self->debug("initialized with key=$key");
+	}
 }
 
-sub trans_history {
-	my($self, %args) = @_;
-	return $self->_raw_rpc('TransHistory', %args);
+##############################################
+# Dynamically enables or disables debugging
+sub enable_debug {
+	my($self, $val) = @_;
+	$self->{debug} = ($val ? 1 : 0);
 }
+
+##############################################
+# Printout a debug message if debugging is
+# enabled
+sub debug {
+	my($self, @msg) = @_;
+	return unless $self->{debug};
+	print "debug: ".join(" ", @msg)."\n";
+}
+
+
+##
+## INTERNAL
+##
+
 
 ##############################################
 # Generic TAPI wrapper
@@ -85,42 +157,6 @@ sub _lwp {
 	my $lwp = LWP::UserAgent->new(ssl_opts => { verify_hostname => 1});
 	$lwp->agent('Mozilla/4.76 [en] (Win98; U)');
 	return $lwp;
-}
-
-##############################################
-# (Re-?)read config file in user home directory
-sub read_config {
-	my($self) = @_;
-	$self->debug("Attempting to get secret from config file");
-	
-	open(CF, "<", "$ENV{HOME}/.btce.secret") or return undef;
-	my $key = <CF>;
-	my $sec = <CF>;
-	close(CF);
-	
-	if(defined($sec)) {
-		chomp($key);
-		chomp($sec);
-		$self->{key} = $key;
-		$self->{secret} = $sec;
-		$self->debug("initialized with key=$key");
-	}
-}
-
-##############################################
-# Dynamically enables or disables debugging
-sub enable_debug {
-	my($self, $val) = @_;
-	$self->{debug} = ($val ? 1 : 0);
-}
-
-##############################################
-# Printout a debug message if debugging is
-# enabled
-sub debug {
-	my($self, @msg) = @_;
-	return unless $self->{debug};
-	print "debug: ".join(" ", @msg)."\n";
 }
 
 

@@ -17,6 +17,4 @@ $btce->enable_debug(1);
 print Data::Dumper::Dumper($btce);
 
 
-print Data::Dumper::Dumper $btce->ticker('btc_usd');
-print Data::Dumper::Dumper $btce->order_list;
-print Data::Dumper::Dumper $btce->trans_history(count=>30, order=>'ASC')
+print Data::Dumper::Dumper $btce->trade_history(count=>30, order=>'ASC')
