@@ -3,6 +3,7 @@ package BTCE;
 use strict;
 use Data::Dumper;
 use LWP::UserAgent;
+use Time::HiRes qw(gettimeofday);
 use Digest::SHA qw( hmac_sha512_hex);
 use JSON qw(decode_json);
 
@@ -15,7 +16,7 @@ sub new {
 	
 	$self->{key}    = delete($args{key});
 	$self->{secret} = delete($args{secret});
-	
+	$self->{nonce}  = time();
 	$self->read_config if !defined($self->{key});
 	
 	return $self;
@@ -36,7 +37,19 @@ sub ticker {
 
 sub order_list {
 	my($self) = @_;
-	my $resp = $self->_authpost($self->_lwp, 'getInfo');
+	return $self->_raw_rpc('getInfo');
+}
+
+sub trans_history {
+	my($self, %args) = @_;
+	return $self->_raw_rpc('TransHistory', %args);
+}
+
+##############################################
+# Generic TAPI wrapper
+sub _raw_rpc {
+	my($self, $command, %args) = @_;
+	my $resp = $self->_authpost($self->_lwp, $command, %args);
 	my $jref = decode_json($resp->content);
 	if(ref($jref) eq 'HASH' && exists($jref->{return})) {
 		return $jref->{return};
@@ -45,26 +58,33 @@ sub order_list {
 }
 
 ##############################################
+# Sends 'method' to TAPI using the given
+# LWP object
+sub _authpost {
+	my($self, $lwp, $method, @optargs) = @_;
+	
+	unshift(@optargs, "method", $method);
+	push(@optargs,    "nonce",  ++$self->{nonce});
+	my $to_sign = "";
+	
+	for(my $i=int(@optargs); $i>0; $i-=2) {
+		$to_sign = "$optargs[$i-2]=$optargs[$i-1]&$to_sign";
+	}
+	chop($to_sign); # last &
+	print "## $to_sign\n";
+	my $hash  = hmac_sha512_hex($to_sign, $self->{secret});
+	$lwp->default_header(Key=>$self->{key});
+	$lwp->default_header(Sign=>$hash);
+	my $resp = $lwp->post("https://btc-e.com/tapi", \@optargs);
+	return $resp;
+}
+
+##############################################
 # Returns a new, ssl enabled and UA faked LWP obj
 sub _lwp {
 	my $lwp = LWP::UserAgent->new(ssl_opts => { verify_hostname => 1});
 	$lwp->agent('Mozilla/4.76 [en] (Win98; U)');
 	return $lwp;
-}
-
-##############################################
-# Sends 'method' to TAPI using the given
-# LWP object
-sub _authpost {
-	my($self, $lwp, $method) = @_;
-	
-	my $nonce = time;
-	my $data  = "method=$method&nonce=$nonce";
-	my $hash  = hmac_sha512_hex($data, $self->{secret});
-	$lwp->default_header(Key=>$self->{key});
-	$lwp->default_header(Sign=>$hash);
-	my $resp = $lwp->post("https://btc-e.com/tapi", [method=>$method,, nonce=>$nonce]);
-	return $resp;
 }
 
 ##############################################
